@@ -2,7 +2,7 @@ import * as React from 'react';
 
 import useTimeout from 'components/util/useTimeout';
 
-import { IReceivedShadowState, IReceivedStatus, ISprinklerConfiguration, ISprinklerProps, IStatus } from './models';
+import { IReceivedShadow, IReceivedStatus, ISprinklerConfiguration, ISprinklerProps, IStatus } from './models';
 import SprinklerConfigurationForm from 'components/sprinkler/SprinklerConfigurationForm';
 import { useMqttClient, MqttMessageCallback } from 'components/util/useMqttClient';
 import classNames from 'classnames';
@@ -29,7 +29,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
   const disconnectedTimeout = useTimeout();
 
   const [status, setStatus] = React.useState<IStatus | null | undefined>(undefined);
-  const [shadowState, setShadowState] = React.useState<IReceivedShadowState | null>(null);
+  const [shadowState, setShadowState] = React.useState<IReceivedShadow | null>(null);
 
   const client = useMqttClient();
 
@@ -64,7 +64,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
     }, [client, sprinklerId]);
 
   const onShadowReceived = React.useCallback(
-    (shadowState: IReceivedShadowState) => {
+    (shadowState: IReceivedShadow) => {
       console.log('Shadow State Received:', shadowState);
       setShadowState(shadowState);
     }, []);

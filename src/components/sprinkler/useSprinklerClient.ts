@@ -1,83 +1,81 @@
 import * as React from 'react';
+import { Observable } from 'rxjs';
+import $ from 'rxjs/operators';
 
-import useMqttClient from 'components/util/useMqttClient';
+import { useMqttClient } from 'components/util/useMqttClient';
 
-import { IReceivedStatus, IStatus } from './models';
+import { IReceivedShadow, IReceivedStatus, IStatus } from './models';
 
 interface ISprinklerClient {
+  requestStatus: () => Promise<any>;
+  requestShadow: () => Promise<any>;
+  status$: Observable<IStatus>;
+  shadow$: Observable<IReceivedShadow>;
 }
 
 interface IOptions {
   deviceId: string;
-  onStatusReceived?: (state: IStatus, client: ISprinklerClient) => void;
-  onShadowReceived?: (state: IStatus, client: ISprinklerClient) => void;
 }
 
 export function useSprinklerClient({
   deviceId,
-  onStatusReceived = () => null,
 }: IOptions) {
+
   const client = useMqttClient();
 
   const requestStatus = React.useCallback(
-    () => client && client.publish(`sprinkler/${deviceId}/status/request`, ''),
+    () => client
+      ? client.publish(`sprinkler/${deviceId}/status/request`, '')
+      : Promise.reject('Client not connected'),
     [client, deviceId]);
 
   const requestShadow = React.useCallback(
-    () => client && client.publish(`$aws/things/${deviceId}/shadow/get`, ''),
+    () => client
+      ? client.publish(`$aws/things/${deviceId}/shadow/get`, '')
+      : Promise.reject('Client not connected'),
     [client, deviceId]);
 
-  const onShadowReceived = React.useCallback(
-    (shadowState: IReceivedShadowState) => {
-      console.log('Shadow State Received:', shadowState);
-      setShadowState(shadowState);
-    }, []);
+  const statusReportedTopic = `sprinkler/${deviceId}/status/report`;
+  const shadowReportedTopic = `$aws/things/${deviceId}/shadow/get/accepted`;
+  const updateAcceptedTopic = `$aws/things/${deviceId}/shadow/update/accepted`;
 
-  const onMessageReceived = React.useCallback<MqttMessageCallback>(
-    (topic, message) => {
-      switch (topic) {
-        case `sprinkler/${deviceId}/status/report`:
-          const status = JSON.parse(message) as IReceivedStatus;
-          onStatusReceived({
-            active: active.map(([zoneId, secondsRemaining]) => ({ zoneId, secondsRemaining })),
-            pending: pending.map(([zoneId, secondsRemaining]) => ({ zoneId, secondsRemaining })),
-          });
-          break;
-        case `$aws/things/${deviceId}/shadow/get/accepted`:
-          onShadowReceived(JSON.parse(message));
-          break;
-        case `$aws/things/${deviceId}/shadow/update/accepted`:
-          requestShadow();
-          break;
-      }
-    }, [deviceId, onStatusReceived, onShadowReceived, requestShadow]);
+  const status$ = client?.messages$.pipe(
+    $.filter(i => i.topic === statusReportedTopic),
+    $.map(({ message }) => JSON.parse(message) as IReceivedStatus),
+    $.map(({ active, pending }) => ({
+      active: active.map(([zoneId, secondsRemaining]) => ({ zoneId, secondsRemaining })),
+      pending: pending.map(([zoneId, secondsRemaining]) => ({ zoneId, secondsRemaining })),
+    })),
+  ) ?? new Observable();
+
+  const shadow$ = client?.messages$.pipe(
+    $.filter(i => i.topic === shadowReportedTopic),
+    $.map(({ message }) => JSON.parse(message) as IReceivedShadow),
+  ) ?? new Observable();
+
+  client?.messages$.pipe(
+    $.filter(i =>
+      i.topic === shadowReportedTopic ||
+      i.topic === updateAcceptedTopic),
+  )?.forEach(() => requestShadow());
+
+  const [sprinklerClient, setSprinklerClient] =
+    React.useState<ISprinklerClient>();
 
   React.useEffect(() => {
-    if (!client) {
-      return;
-    }
-    client.onMessageReceived(onMessageReceived);
-    client.subscribe(`sprinkler/${deviceId}/status/report`)
-      .then(requestStatus);
     Promise.all([
-      client.subscribe(`$aws/things/${deviceId}/shadow/update/accepted`),
-      client.subscribe(`$aws/things/${deviceId}/shadow/get/accepted`),
-    ])
-      .then(requestShadow);
-    return () => {
-      requestTimeout.stop();
-    }
-  }, [client, deviceId, onMessageReceived, requestStatus, requestShadow, requestTimeout]);
+      client?.subscribe(statusReportedTopic),
+      client?.subscribe(shadowReportedTopic),
+      client?.subscribe(updateAcceptedTopic),
+    ]).then(() => setSprinklerClient({
+      requestStatus,
+      requestShadow,
+      status$,
+      shadow$,
+    }))
+  }, [client]);
 
-  const updateDesiredShadow = React.useCallback(
-    (config: ISprinklerConfiguration) =>
-      client && client.publish(`$aws/things/${deviceId}/shadow/update`, JSON.stringify({
-        state: {
-          desired: config,
-        },
-      })),
-    [deviceId, client]);
-
+  return sprinklerClient;
 }
 
 export default useSprinklerClient;

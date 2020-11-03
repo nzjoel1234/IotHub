@@ -1,22 +1,24 @@
 import * as React from 'react';
 import { Client, Message } from 'paho-mqtt'
 import { Signer } from 'aws-amplify';
+import { Observable } from 'rxjs';
 
 import CredentialsContext from 'components/auth/CredentialsContext';
 
-export type MqttMessageCallback = (topic: string, message: string) => void;
+interface IMessage {
+  topic: string;
+  message: string;
+}
 
 export type MqttClient = {
   publish: (topic: string, message: string) => Promise<any>;
   subscribe: (topic: string) => Promise<any>;
-  onMessageReceived: (handler: MqttMessageCallback) => void;
+  messages$: Observable<IMessage>;
 }
 
 export function useMqttClient(): MqttClient | null {
 
   const credentials = React.useContext(CredentialsContext);
-
-  const [clientInterface, setClientInterface] = React.useState<MqttClient | null>(null);
 
   const signedEndpoint = React.useMemo(() => {
     if (!credentials) {
@@ -86,16 +88,10 @@ export function useMqttClient(): MqttClient | null {
       }
   }, [connectedClient]);
 
-  const messageReceivedCallback = React.useRef<MqttMessageCallback>();
-
-  React.useEffect(
-    () => {
-      messageReceivedCallback.current = undefined;
-      if (!connectedClient?.isConnected()) {
-        setClientInterface(null);
-        return;
-      }
-      const clientInterface: MqttClient = {
+  return React.useMemo(
+    () => !connectedClient?.isConnected()
+      ? null
+      : {
         publish: (topic, message) => new Promise((resolve, reject) => {
           const mqttMessage = new Message(message);
           mqttMessage.destinationName = topic;
@@ -116,17 +112,14 @@ export function useMqttClient(): MqttClient | null {
             reject(e);
           }
         }),
-        onMessageReceived: handler => messageReceivedCallback.current = handler,
-      };
-      connectedClient.onMessageArrived = ({ destinationName, payloadString }) => {
-        console.log('rx', destinationName, payloadString);
-        messageReceivedCallback.current && messageReceivedCallback.current(destinationName, payloadString);
-      }
-      setClientInterface(clientInterface);
-    },
+        messages$: new Observable(subscriber =>
+          connectedClient.onMessageArrived = ({ destinationName, payloadString }) =>
+            subscriber.next({
+              topic: destinationName,
+              message: payloadString,
+            })),
+      },
     [connectedClient]);
-
-  return clientInterface;
 }
 
 export default useMqttClient;

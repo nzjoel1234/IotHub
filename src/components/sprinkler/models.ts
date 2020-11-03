@@ -52,7 +52,7 @@ export interface ISprinklerConfiguration {
   utcOffsetMins: number;
 }
 
-export interface IReceivedShadowState {
+export interface IReceivedShadow {
   state: {
     desired: ISprinklerConfiguration;
     reported?: ISprinklerConfiguration;
