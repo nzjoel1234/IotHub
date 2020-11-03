@@ -1,0 +1,9 @@
+{
+	"auth": {
+		"IotHubAuth": {
+			"service": "Cognito",
+			"providerPlugin": "awscloudformation",
+			"dependsOn": []
+		}
+	}
+}

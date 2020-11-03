@@ -1,0 +1,22 @@
+{
+    "prod": {
+        "awscloudformation": {
+            "AuthRoleName": "amplify-iothub-prod-214909-authRole",
+            "UnauthRoleArn": "arn:aws:iam::553492783199:role/amplify-iothub-prod-214909-unauthRole",
+            "AuthRoleArn": "arn:aws:iam::553492783199:role/amplify-iothub-prod-214909-authRole",
+            "Region": "us-east-1",
+            "DeploymentBucketName": "amplify-iothub-prod-214909-deployment",
+            "UnauthRoleName": "amplify-iothub-prod-214909-unauthRole",
+            "StackName": "amplify-iothub-prod-214909",
+            "StackId": "arn:aws:cloudformation:us-east-1:553492783199:stack/amplify-iothub-prod-214909/ac986140-936c-11ea-af66-0a392ab5a299",
+            "AmplifyAppId": "d3cn8eo85wlamy"
+        },
+        "categories": {
+            "auth": {
+                "IotHubAuth": {
+                    "hostedUIProviderCreds": "[]"
+                }
+            }
+        }
+    }
+}
