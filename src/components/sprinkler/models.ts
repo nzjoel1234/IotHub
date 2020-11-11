@@ -1,6 +1,8 @@
+import { Duration } from 'luxon';
+
 export interface IQueuedZone {
   zoneId: number;
-  secondsRemaining: number;
+  duration: Duration;
 }
 
 export interface IStatus {

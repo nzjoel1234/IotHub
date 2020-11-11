@@ -1,79 +1,120 @@
 import * as React from 'react';
 import { Observable } from 'rxjs';
-import $ from 'rxjs/operators';
+import * as $ from 'rxjs/operators';
+import { Duration } from 'luxon';
+import { map, keyBy, mapValues, pickBy, keys } from 'lodash';
 
-import { useMqttClient } from 'components/util/useMqttClient';
+import { useMqttClient } from 'components/util';
 
-import { IReceivedShadow, IReceivedStatus, IStatus } from './models';
+import { IProgramConfiguration, IReceivedShadow, IReceivedStatus, ISprinklerConfiguration, IStatus } from './models';
 
-interface ISprinklerClient {
+export interface ISprinklerClient {
   requestStatus: () => Promise<any>;
   requestShadow: () => Promise<any>;
+  updateConfig: (config: ISprinklerConfiguration) => Promise<any>;
+  queueZones: (durationByZoneId: { [zoneId: number]: Duration }) => Promise<any>;
+  queueProgram: (program: IProgramConfiguration) => Promise<any>;
+  stopZones: (zoneIds?: number[]) => Promise<any>;
   status$: Observable<IStatus>;
   shadow$: Observable<IReceivedShadow>;
 }
 
-interface IOptions {
-  deviceId: string;
-}
-
-export function useSprinklerClient({
-  deviceId,
-}: IOptions) {
+export function useSprinklerClient(deviceId: string) {
 
   const client = useMqttClient();
 
-  const requestStatus = React.useCallback(
-    () => client
-      ? client.publish(`sprinkler/${deviceId}/status/request`, '')
-      : Promise.reject('Client not connected'),
-    [client, deviceId]);
-
-  const requestShadow = React.useCallback(
-    () => client
-      ? client.publish(`$aws/things/${deviceId}/shadow/get`, '')
-      : Promise.reject('Client not connected'),
-    [client, deviceId]);
-
-  const statusReportedTopic = `sprinkler/${deviceId}/status/report`;
-  const shadowReportedTopic = `$aws/things/${deviceId}/shadow/get/accepted`;
-  const updateAcceptedTopic = `$aws/things/${deviceId}/shadow/update/accepted`;
-
-  const status$ = client?.messages$.pipe(
-    $.filter(i => i.topic === statusReportedTopic),
-    $.map(({ message }) => JSON.parse(message) as IReceivedStatus),
-    $.map(({ active, pending }) => ({
-      active: active.map(([zoneId, secondsRemaining]) => ({ zoneId, secondsRemaining })),
-      pending: pending.map(([zoneId, secondsRemaining]) => ({ zoneId, secondsRemaining })),
-    })),
-  ) ?? new Observable();
-
-  const shadow$ = client?.messages$.pipe(
-    $.filter(i => i.topic === shadowReportedTopic),
-    $.map(({ message }) => JSON.parse(message) as IReceivedShadow),
-  ) ?? new Observable();
-
-  client?.messages$.pipe(
-    $.filter(i =>
-      i.topic === shadowReportedTopic ||
-      i.topic === updateAcceptedTopic),
-  )?.forEach(() => requestShadow());
-
   const [sprinklerClient, setSprinklerClient] =
-    React.useState<ISprinklerClient>();
+    React.useState<ISprinklerClient | null | undefined>(undefined);
 
   React.useEffect(() => {
+    if (!client) {
+      setSprinklerClient(client === undefined ? undefined : null);
+      return () => { };
+    }
+
+    const topics = {
+      status: {
+        request: `sprinkler/${deviceId}/status/request`,
+        reported: `sprinkler/${deviceId}/status/report`,
+      },
+      shadow: {
+        request: `$aws/things/${deviceId}/shadow/get`,
+        update: `$aws/things/${deviceId}/shadow/update`,
+        reported: `$aws/things/${deviceId}/shadow/get/accepted`,
+        updated: `$aws/things/${deviceId}/shadow/update/accepted`,
+      },
+      zones: {
+        queue: `sprinkler/${deviceId}/zones/queue`,
+        stop: `sprinkler/${deviceId}/zones/stop`,
+      }
+    };
+
+    const requestStatus = () =>
+      client.publish(topics.status.request, '');
+
+    const requestShadow = () =>
+      client.publish(topics.shadow.request, '');
+
+    const updateConfig = (config: ISprinklerConfiguration) =>
+      client.publish(topics.shadow.update,
+        JSON.stringify({ state: { desired: config } }));
+
+    const queueZones = (durationByZoneId: { [zoneId: number]: Duration }) => {
+      const nonZeroItems = pickBy(durationByZoneId || {}, d => d >= Duration.fromObject({ seconds: 1 }))
+      if (!keys(nonZeroItems).length) {
+        return Promise.resolve();
+      }
+      const zoneItems = map(nonZeroItems, (duration, id) =>
+        `${id}:${Math.round(duration.as('seconds'))}`);
+      return client.publish(topics.zones.queue,
+        `{${zoneItems.join(',')}}`);
+    }
+
+    const queueProgram = (program: IProgramConfiguration) =>
+      !program ? Promise.resolve() :
+        queueZones(mapValues(keyBy(program.zones, z => z.id),
+          i => Duration.fromObject({ seconds: i.duration })));
+
+    const stopZones = (zoneIds?: number[]) =>
+      client.publish(topics.zones.stop,
+        zoneIds ? JSON.stringify(zoneIds) : '');
+
+    const status$ = client.messages$.pipe(
+      $.filter(m => m.topic === topics.status.reported),
+      $.map(({ message }) => JSON.parse(message) as IReceivedStatus),
+      $.map(({ active, pending }): IStatus => ({
+        active: active.map(([zoneId, seconds]) => ({ zoneId, duration: Duration.fromObject({ seconds }) })),
+        pending: pending.map(([zoneId, seconds]) => ({ zoneId, duration: Duration.fromObject({ seconds }) })),
+      })));
+
+    const shadow$ = client.messages$.pipe(
+      $.filter(m => m.topic === topics.shadow.reported),
+      $.map(({ message }) => JSON.parse(message) as IReceivedShadow));
+
+    const subscription = client.messages$.pipe(
+      $.filter(m => m.topic === topics.shadow.updated),
+    )
+      .subscribe(requestShadow);
+
     Promise.all([
-      client?.subscribe(statusReportedTopic),
-      client?.subscribe(shadowReportedTopic),
-      client?.subscribe(updateAcceptedTopic),
+      client.subscribe(topics.status.reported),
+      client.subscribe(topics.shadow.reported),
+      client.subscribe(topics.shadow.updated),
     ]).then(() => setSprinklerClient({
       requestStatus,
-      requestShadow,
+      requestShadow: () => requestShadow(),
+      updateConfig,
+      queueZones,
+      queueProgram,
+      stopZones,
       status$,
       shadow$,
-    }))
-  }, [client]);
+    }));
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, [client, deviceId]);
 
   return sprinklerClient;
 }

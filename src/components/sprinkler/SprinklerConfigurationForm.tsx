@@ -56,7 +56,7 @@ export function SprinklerConfigurationForm({
                     {({ fields }) => fields.map((name, index) => {
                       const zoneProperties = propertiesOf<IZoneConfiguration>();
                       return (
-                        <tr>
+                        <tr key={index}>
                           <td style={{ textAlign: 'center' }}>{index}</td>
                           <td>
                             <Field<string> name={`${name}.${zoneProperties.name}`}>
@@ -94,7 +94,7 @@ export function SprinklerConfigurationForm({
                     {({ fields }) => fields.map((name, index) => {
                       const programProperties = propertiesOf<IProgramConfiguration>();
                       return (
-                        <tr>
+                        <tr key={index}>
                           <td>
                             <Field<string> name={`${name}.${programProperties.name}`}>
                               {({ input }) => (
@@ -130,7 +130,7 @@ export function SprinklerConfigurationForm({
               </Field>
             </fieldset>
           </details>
-          {submitError && <p style={{ color: 'indianred' }}>{submitError}</p>}
+          {submitError && <p className="has-text-right has-text-danger">{submitError}</p>}
           <input className="button" type="submit" value="Save" disabled={submitting} />
         </form>
       )}

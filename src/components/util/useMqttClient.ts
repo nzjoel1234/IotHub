@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { Client, Message } from 'paho-mqtt'
 import { Signer } from 'aws-amplify';
-import { Observable } from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 
-import CredentialsContext from 'components/auth/CredentialsContext';
+import { useCredentials } from 'components/auth';
 
 interface IMessage {
   topic: string;
@@ -16,9 +16,9 @@ export type MqttClient = {
   messages$: Observable<IMessage>;
 }
 
-export function useMqttClient(): MqttClient | null {
+export function useMqttClient(): MqttClient | null | undefined {
 
-  const credentials = React.useContext(CredentialsContext);
+  const credentials = useCredentials();
 
   const signedEndpoint = React.useMemo(() => {
     if (!credentials) {
@@ -44,7 +44,7 @@ export function useMqttClient(): MqttClient | null {
     );
   }, [credentials]);
 
-  const [connectedClient, setConnectedClient] = React.useState<Client>();
+  const [connectedClient, setConnectedClient] = React.useState<Client | null>();
   const lastSignedEndpoint = React.useRef<string | null>();
 
   React.useEffect(() => {
@@ -53,7 +53,6 @@ export function useMqttClient(): MqttClient | null {
     }
 
     lastSignedEndpoint.current = signedEndpoint;
-    setConnectedClient(undefined);
     if (!signedEndpoint) {
       return;
     }
@@ -62,7 +61,8 @@ export function useMqttClient(): MqttClient | null {
     const client = new Client(signedEndpoint, clientId);
 
     client.onConnectionLost = (...p) => {
-      setConnectedClient(undefined);
+      console.error('connectionLost', p);
+      setConnectedClient(null);
     }
 
     client.onMessageDelivered = ({ destinationName, payloadString }) => {
@@ -70,56 +70,68 @@ export function useMqttClient(): MqttClient | null {
     }
 
     client.connect({
-      onSuccess: (...p) => {
-        setConnectedClient(client);
-      },
+      onSuccess: () => setConnectedClient(client),
+      onFailure: (...p) => {
+        console.error('connectionFailed', p);
+        setConnectedClient(null);
+      }
     });
   }, [signedEndpoint, connectedClient]);
 
+  const [result, setResult] = React.useState<MqttClient | null | undefined>();
+
   React.useEffect(() => {
-    return !connectedClient
-      ? () => { }
-      : () => {
-        connectedClient.onConnectionLost = () => null;
-        connectedClient.onMessageArrived = () => null;
-        if (connectedClient.isConnected()) {
-          connectedClient.disconnect();
+    console.log({ connectedClient });
+    if (!connectedClient?.isConnected()) {
+      setResult(connectedClient === undefined ? undefined : null);
+      return () => { };
+    }
+
+    const messages$ = new Subject<IMessage>();
+    messages$.subscribe(({ topic, message }) =>
+      console.log('rx', topic, message));
+
+    connectedClient.onMessageArrived = ({ destinationName, payloadString }) =>
+      messages$.next({
+        topic: destinationName,
+        message: payloadString,
+      });
+
+    setResult({
+      publish: (topic, message) => new Promise((resolve, reject) => {
+        const mqttMessage = new Message(message);
+        mqttMessage.destinationName = topic;
+        try {
+          connectedClient.send(mqttMessage);
+          resolve();
+        } catch (e) {
+          reject(e);
         }
+      }),
+      subscribe: (topic) => new Promise((resolve, reject) => {
+        try {
+          connectedClient.subscribe(topic, {
+            onSuccess: () => resolve(),
+            onFailure: e => reject(e),
+          });
+        } catch (e) {
+          reject(e);
+        }
+      }),
+      messages$,
+    });
+
+    return () => {
+      messages$.complete();
+      connectedClient.onConnectionLost = () => null;
+      connectedClient.onMessageArrived = () => null;
+      if (connectedClient.isConnected()) {
+        connectedClient.disconnect();
       }
+    };
   }, [connectedClient]);
 
-  return React.useMemo(
-    () => !connectedClient?.isConnected()
-      ? null
-      : {
-        publish: (topic, message) => new Promise((resolve, reject) => {
-          const mqttMessage = new Message(message);
-          mqttMessage.destinationName = topic;
-          try {
-            connectedClient.send(mqttMessage);
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-        }),
-        subscribe: (topic) => new Promise((resolve, reject) => {
-          try {
-            connectedClient.subscribe(topic, {
-              onSuccess: () => resolve(),
-              onFailure: e => reject(e),
-            });
-          } catch (e) {
-            reject(e);
-          }
-        }),
-        messages$: new Observable(subscriber =>
-          connectedClient.onMessageArrived = ({ destinationName, payloadString }) =>
-            subscriber.next({
-              topic: destinationName,
-              message: payloadString,
-            })),
-      },
-    [connectedClient]);
+  return result;
 }
 
 export default useMqttClient;

@@ -1,62 +1,53 @@
 import React from 'react';
-import { ICredentials } from '@aws-amplify/core';
-import { Auth, Hub } from 'aws-amplify';
+import { map } from 'lodash';
 
-import { LoginForm, ILoginFormData } from './LoginForm';
-import CredentialsContext from './CredentialsContext';
+import amplifyConfig from 'amplifyConfig';
 
-export function AuthenticatedZone({ children }: React.PropsWithChildren<{}>) {
+import useCredentials from './useCredentials';
 
-  const [loggedIn, setLoggedIn] = React.useState<boolean>();
-  const [credentials, setCredentials] = React.useState<ICredentials>();
+const loginUrl = `https://${amplifyConfig.Auth.oauth.domain}/login?${map({
+  'client_id': amplifyConfig.Auth.userPoolWebClientId,
+  'response_type': amplifyConfig.Auth.oauth.responseType,
+  'scope': amplifyConfig.Auth.oauth.scope.join('+'),
+  'redirect_uri': amplifyConfig.Auth.oauth.redirectSignIn,
+}, (v, k) => `${k}=${v}`).join('&')}`;
 
-  const updateAuthState = React.useCallback(() => {
-    Auth.currentCredentials()
-      .then(setCredentials);
-    Auth.currentSession()
-      .then(() => setLoggedIn(true))
-      .catch(() => setLoggedIn(false));
-  }, []);
+export function AuthenticatedZone({ children }: any) {
+  const credentials = useCredentials();
 
-  React.useEffect(() => {
-    Hub.listen('auth', data => {
-      console.log(data);
-      updateAuthState();
-    });
-    updateAuthState();
-  }, [updateAuthState])
-
-  const login = React.useCallback((credentials: ILoginFormData) => {
-    return (Auth.signIn(credentials)
-      .then(() => null)
-      .catch(e => e.message)).then(i => { console.log(i); return i; });
-  }, []);
-
-  return loggedIn === undefined
-    ? (
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 100,
-      }}>
-        <span className="icon">
-          <i className="fa fa-circle-notch fa-spin" />
-        </span>
-      </div>
-    )
-    : !loggedIn
-      ? < LoginForm login={login} />
-      : (
-        <CredentialsContext.Provider value={credentials}>
-          {children}
-        </CredentialsContext.Provider>
-      );
+  return credentials === undefined ? (
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: 100,
+    }}>
+      <span className="icon">
+        <i className="fa fa-circle-notch fa-spin" />
+      </span>
+    </div>
+  ) : !credentials
+      ? (
+        <section className="hero">
+          <div className="hero-body">
+            <div className="container">
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <img className="mx-2" src="/logo128.png" alt="brand" />
+                <div className="mx-2" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <h1 className="title">IOT Hub</h1>
+                  <a className="button is-success" href={loginUrl}>LOGIN</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )
+      : <>{children}</>;
 }
 
 export default AuthenticatedZone;
