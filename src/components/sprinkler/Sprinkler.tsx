@@ -12,7 +12,7 @@ import {
   IStatus,
 } from './models';
 import ConfirmStartModal from './ConfirmStartModal';
-import useSprinklerClient from './useSprinklerClient.mock';
+import useSprinklerClient from './useSprinklerClient';
 
 interface IQueuedZoneTagProps {
   queuedZone: IQueuedZone;
