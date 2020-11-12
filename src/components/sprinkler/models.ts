@@ -1,13 +1,19 @@
-import { Duration } from 'luxon';
+import { DateTime, Duration } from 'luxon';
 
-export interface IQueuedZone {
+export interface IPendingZone {
   zoneId: number;
   duration: Duration;
 }
 
+export interface IActiveZone {
+  zoneId: number;
+  expiry: DateTime;
+}
+
 export interface IStatus {
-  pending: IQueuedZone[];
-  active: IQueuedZone[];
+  time: DateTime;
+  pending: IPendingZone[];
+  active: IActiveZone[];
 }
 
 export interface IReceivedStatus {

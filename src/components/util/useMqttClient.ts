@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Client, Message } from 'paho-mqtt'
+import MQTT from 'async-mqtt';
 import { Signer } from 'aws-amplify';
 import { Observable, Subject } from 'rxjs';
 
@@ -10,19 +10,29 @@ interface IMessage {
   message: string;
 }
 
+export enum MqttConnectionState {
+  Connecting,
+  Connected,
+  Disconnecting,
+  Disconnected,
+}
+
 export type MqttClient = {
   publish: (topic: string, message: string) => Promise<any>;
-  subscribe: (topic: string) => Promise<any>;
+  subscribe: (topic: string | string[]) => Promise<any>;
+  unsubscribe: (topic: string | string[]) => Promise<any>;
   messages$: Observable<IMessage>;
 }
 
-export function useMqttClient(): MqttClient | null | undefined {
-
+export function useMqttClient() {
   const credentials = useCredentials();
 
-  const signedEndpoint = React.useMemo(() => {
+  const signedUriRef = React.useRef<string>();
+  const [signedUri, setSignedUri] = React.useState<string | null>(null);
+  React.useEffect(() => {
     if (!credentials) {
-      return null;
+      setSignedUri(null);
+      return;
     }
 
     const {
@@ -31,107 +41,58 @@ export function useMqttClient(): MqttClient | null | undefined {
       sessionToken: session_token,
     } = credentials;
 
-    const endpoint = 'wss://a3ifeswmcxw4rt-ats.iot.us-east-1.amazonaws.com/mqtt';
+    const uri = 'wss://a3ifeswmcxw4rt-ats.iot.us-east-1.amazonaws.com/mqtt';
     const serviceInfo = {
       service: 'iotdevicegateway',
       region: 'us-east-1',
     };
 
-    return Signer.signUrl(
-      endpoint,
+    setSignedUri(signedUriRef.current = Signer.signUrl(
+      uri,
       { access_key, secret_key, session_token },
       serviceInfo
-    );
+    ));
   }, [credentials]);
 
-  const [connectedClient, setConnectedClient] = React.useState<Client | null>();
-  const lastSignedEndpoint = React.useRef<string | null>();
+  const [client, setClient] = React.useState<MQTT.AsyncClient | null>(null);
+  const [messages$] = React.useState(new Subject<IMessage>());
 
   React.useEffect(() => {
-    if (connectedClient?.isConnected() && !!signedEndpoint && lastSignedEndpoint.current === signedEndpoint) {
-      return;
-    }
+    const sub = messages$.subscribe(({ topic, message }) =>
+      console.log('mqtt.rx', topic, message));
+    return () => sub.unsubscribe();
+  }, [messages$]);
 
-    lastSignedEndpoint.current = signedEndpoint;
-    if (!signedEndpoint) {
-      return;
-    }
-
-    const clientId = Math.random().toString(36).substring(7);
-    const client = new Client(signedEndpoint, clientId);
-
-    client.onConnectionLost = (...p) => {
-      console.error('connectionLost', p);
-      setConnectedClient(null);
-    }
-
-    client.onMessageDelivered = ({ destinationName, payloadString }) => {
-      console.log('tx', destinationName, payloadString);
-    }
-
-    client.connect({
-      onSuccess: () => setConnectedClient(client),
-      onFailure: (...p) => {
-        console.error('connectionFailed', p);
-        setConnectedClient(null);
-      }
-    });
-  }, [signedEndpoint, connectedClient]);
-
-  const [result, setResult] = React.useState<MqttClient | null | undefined>();
-
-  React.useEffect(() => {
-    console.log({ connectedClient });
-    if (!connectedClient?.isConnected()) {
-      setResult(connectedClient === undefined ? undefined : null);
-      return () => { };
-    }
-
-    const messages$ = new Subject<IMessage>();
-    messages$.subscribe(({ topic, message }) =>
-      console.log('rx', topic, message));
-
-    connectedClient.onMessageArrived = ({ destinationName, payloadString }) =>
+  const onConnected = React.useCallback((client: MQTT.AsyncClient) => {
+    client.on('message', (topic, payload) => {
       messages$.next({
-        topic: destinationName,
-        message: payloadString,
+        topic,
+        message: payload.toString(),
       });
-
-    setResult({
-      publish: (topic, message) => new Promise((resolve, reject) => {
-        const mqttMessage = new Message(message);
-        mqttMessage.destinationName = topic;
-        try {
-          connectedClient.send(mqttMessage);
-          resolve();
-        } catch (e) {
-          reject(e);
-        }
-      }),
-      subscribe: (topic) => new Promise((resolve, reject) => {
-        try {
-          connectedClient.subscribe(topic, {
-            onSuccess: () => resolve(),
-            onFailure: e => reject(e),
-          });
-        } catch (e) {
-          reject(e);
-        }
-      }),
-      messages$,
     });
+    setClient(client);
+  }, [messages$]);
 
-    return () => {
-      messages$.complete();
-      connectedClient.onConnectionLost = () => null;
-      connectedClient.onMessageArrived = () => null;
-      if (connectedClient.isConnected()) {
-        connectedClient.disconnect();
-      }
-    };
-  }, [connectedClient]);
+  React.useEffect(() => {
+    if (!!client || !signedUri) {
+      return;
+    }
+    MQTT.connectAsync(signedUri, {
+      clientId: Math.random().toString(36).substring(7),
+      transformWsUrl: url => signedUriRef.current || url,
+    })
+      .then(onConnected)
+      .catch(e => console.error('mqtt failed to connect', e));
+  }, [client, signedUri, onConnected]);
 
-  return result;
+  return React.useMemo<MqttClient | null>(() => !client ? null : ({
+    publish: (topic, message) => client
+      .publish(topic, message)
+      .then(() => console.log('mqtt.tx', topic, message)),
+    subscribe: topic => client.subscribe(topic),
+    unsubscribe: topic => client.unsubscribe(topic),
+    messages$,
+  }), [client, messages$]);
 }
 
 export default useMqttClient;

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Observable } from 'rxjs';
 import * as $ from 'rxjs/operators';
-import { Duration } from 'luxon';
+import { DateTime, Duration } from 'luxon';
 import { map, keyBy, mapValues, pickBy, keys } from 'lodash';
 
 import { useMqttClient } from 'components/util';
@@ -20,15 +20,12 @@ export interface ISprinklerClient {
 }
 
 export function useSprinklerClient(deviceId: string) {
-
   const client = useMqttClient();
-
-  const [sprinklerClient, setSprinklerClient] =
-    React.useState<ISprinklerClient | null | undefined>(undefined);
+  const [sprinklerClient, setSprinklerClient] = React.useState<ISprinklerClient | null>(null);
 
   React.useEffect(() => {
     if (!client) {
-      setSprinklerClient(client === undefined ? undefined : null);
+      setSprinklerClient(null);
       return () => { };
     }
 
@@ -82,10 +79,14 @@ export function useSprinklerClient(deviceId: string) {
     const status$ = client.messages$.pipe(
       $.filter(m => m.topic === topics.status.reported),
       $.map(({ message }) => JSON.parse(message) as IReceivedStatus),
-      $.map(({ active, pending }): IStatus => ({
-        active: active.map(([zoneId, seconds]) => ({ zoneId, duration: Duration.fromObject({ seconds }) })),
-        pending: pending.map(([zoneId, seconds]) => ({ zoneId, duration: Duration.fromObject({ seconds }) })),
-      })));
+      $.map(({ active, pending }): IStatus => {
+        const time = DateTime.local();
+        return {
+          time,
+          active: active.map(([zoneId, seconds]) => ({ zoneId, expiry: time.plus({ seconds }) })),
+          pending: pending.map(([zoneId, seconds]) => ({ zoneId, duration: Duration.fromObject({ seconds }) })),
+        };
+      }));
 
     const shadow$ = client.messages$.pipe(
       $.filter(m => m.topic === topics.shadow.reported),
@@ -96,23 +97,29 @@ export function useSprinklerClient(deviceId: string) {
     )
       .subscribe(requestShadow);
 
-    Promise.all([
-      client.subscribe(topics.status.reported),
-      client.subscribe(topics.shadow.reported),
-      client.subscribe(topics.shadow.updated),
-    ]).then(() => setSprinklerClient({
-      requestStatus,
-      requestShadow: () => requestShadow(),
-      updateConfig,
-      queueZones,
-      queueProgram,
-      stopZones,
-      status$,
-      shadow$,
-    }));
+    const subscriptions = [
+      topics.shadow.reported,
+      topics.status.reported,
+      topics.shadow.updated,
+    ];
+
+    client
+      .subscribe(subscriptions)
+      .then(() =>
+        setSprinklerClient({
+          requestStatus,
+          requestShadow: () => requestShadow(),
+          updateConfig,
+          queueZones,
+          queueProgram,
+          stopZones,
+          status$,
+          shadow$,
+        }));
 
     return () => {
       subscription?.unsubscribe();
+      client.unsubscribe(subscriptions);
     };
   }, [client, deviceId]);
 

@@ -1,17 +1,18 @@
 import * as React from 'react';
+import { Duration } from 'luxon';
 
 export function useTimeout() {
 
   const timeout = React.useRef<any>(null);
 
   const stop = React.useCallback(
-    () => clearTimeout(timeout.current),
+    () => window.clearTimeout(timeout.current),
     []);
 
   const start = React.useCallback(
-    (handler: () => void, timeoutMs: number) => {
+    (handler: () => void, duration: Duration) => {
       stop();
-      timeout.current = setTimeout(handler, timeoutMs);
+      timeout.current = window.setTimeout(handler, duration.as('milliseconds'));
     },
     [stop]);
 

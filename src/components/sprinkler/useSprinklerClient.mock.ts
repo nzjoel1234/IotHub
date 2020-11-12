@@ -1,4 +1,4 @@
-import { Duration } from 'luxon';
+import { DateTime, Duration } from 'luxon';
 import * as React from 'react';
 import { Subject } from 'rxjs';
 import { delay } from 'rxjs/operators';
@@ -19,11 +19,13 @@ export function useSprinklerClient(_deviceId: string) {
     const shadow$ = new Subject<IReceivedShadow>();
     return ({
       requestStatus: () => {
+        const time = DateTime.local();
         status$.next({
+          time,
           active: [
-            { zoneId: 0, duration: Duration.fromObject({ minutes: 3 }) },
-            { zoneId: 1, duration: Duration.fromObject({ seconds: 12 }) },
-            { zoneId: 2, duration: Duration.fromObject({ seconds: 12 }) },
+            { zoneId: 0, expiry: time.plus({ minutes: 3 }) },
+            { zoneId: 1, expiry: time.plus({ seconds: 12 }) },
+            { zoneId: 2, expiry: time.plus({ seconds: 12 }) },
           ],
           pending: [
             { zoneId: 3, duration: Duration.fromObject({ seconds: 110 }) },

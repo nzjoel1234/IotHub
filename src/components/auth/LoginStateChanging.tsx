@@ -1,26 +1,27 @@
-import useCredentials from 'components/auth/useCredentials';
-import { useTimeout } from 'components/util';
 import * as React from 'react';
 import { Redirect } from 'react-router-dom';
 import { Auth } from 'aws-amplify';
+
+import useCredentials from 'components/auth/useCredentials';
+import { useNow } from 'components/util';
+import { Duration } from 'luxon';
 
 interface IProps {
   waitingFor: 'login' | 'logout';
 }
 
 export const LoginStateChanging = ({ waitingFor }: IProps) => {
-  const timeout = useTimeout();
   const credentials = useCredentials();
-  const [timedOut, setTimedOut] = React.useState(false);
+  const now = useNow();
+  const [expiryTime] = React.useState(now.plus(Duration.fromObject({ seconds: 5 })));
 
   React.useEffect(() => {
     if (waitingFor === 'logout') {
       Auth.signOut();
     }
-    timeout.start(() => setTimedOut(true), 2000);
-  }, [waitingFor, timeout]);
+  }, [waitingFor]);
 
-  return timedOut || (!!credentials === (waitingFor === 'login'))
+  return ((now > expiryTime) || (credentials !== undefined && (!!credentials === (waitingFor === 'login'))))
     ? <Redirect to="" />
     : (
       <div style={{

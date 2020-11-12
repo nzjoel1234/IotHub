@@ -2,10 +2,11 @@ import * as React from 'react';
 import { Form, Field } from 'react-final-form';
 import { Duration } from 'luxon';
 import { reduce } from 'lodash';
+import { FORM_ERROR } from 'final-form';
+import classNames from 'classnames';
 
 import { IProgramConfiguration, ISprinklerConfiguration } from './models';
 import { ISprinklerClient } from './useSprinklerClient';
-import { FORM_ERROR } from 'final-form';
 
 interface IProps {
   client: ISprinklerClient;
@@ -115,16 +116,14 @@ export const ConfirmStartModal = ({
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
                   <button
                     type="submit"
-                    className="button is-success"
+                    className={classNames("button is-success", { "is-loading": submitting })}
                     style={{ marginRight: '0.5rem' }}
-                    disabled={submitting}
                   >
                     <i className="fa fa-check" />
                   </button>
                   <button
-                    className="button is-danger"
+                    className={classNames("button is-danger", { "is-loading": submitting })}
                     onClick={onDone}
-                    disabled={submitting}
                   >
                     <i className="fa fa-times" />
                   </button>

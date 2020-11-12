@@ -1,74 +1,68 @@
 import * as React from 'react';
+import { DateTime, Duration } from 'luxon';
 import classNames from 'classnames';
 
-import { useTimeout } from 'components/util';
+import { useNow, usePageVisibility, useTimeout } from 'components/util';
 
 import {
   IProgramConfiguration,
-  IQueuedZone,
   IReceivedShadow,
-  ISprinklerConfiguration,
   ISprinklerProps,
   IStatus,
 } from './models';
 import ConfirmStartModal from './ConfirmStartModal';
+import SprinklerStatus from './SprinklerStatus';
 import useSprinklerClient from './useSprinklerClient';
 
-interface IQueuedZoneTagProps {
-  queuedZone: IQueuedZone;
-  config?: ISprinklerConfiguration;
-  pending?: boolean;
-}
-
-const QueuedZoneTag = ({
-  queuedZone: {
-    zoneId,
-    duration,
-  },
-  config,
-  pending,
-}: IQueuedZoneTagProps) => {
-  const zone = config?.zones[zoneId];
-  const label = zone?.name || `Zone ${zoneId}`;
-  return (
-    <div className="control">
-      <div className="tags has-addons">
-        <span className={classNames("tag", pending ? "is-info" : "is-success")}>
-          {label}
-        </span>
-        <span className="tag">
-          {`${Math.round(duration.as('minutes'))} mins`}
-        </span>
-      </div>
-    </div>
-  );
-}
+const offlineTimeoutDuration = Duration.fromObject({ seconds: 3 });
+const activeRequestStatusPeriod = Duration.fromObject({ seconds: 10 });
+const inactiveRequestStatusPeriod = Duration.fromObject({ seconds: 60 });
+const randomRequestStatusWindow = Duration.fromObject({ seconds: 5 });
 
 export function Sprinkler({ sprinklerId }: ISprinklerProps) {
 
-  const requestStatusTimeout = useTimeout();
-  const disconnectedTimeout = useTimeout();
+  const pageVisible = usePageVisibility();
+  const pageVisibleRef = React.useRef(pageVisible);
+  pageVisibleRef.current = pageVisible;
 
-  const [status, setStatus] = React.useState<IStatus | null | undefined>(undefined);
-  const [shadowState, setShadowState] = React.useState<IReceivedShadow | null>(null);
-
+  const now = useNow();
   const client = useSprinklerClient(sprinklerId);
+  const statusTimer = useTimeout();
+
+  const [status, setStatus] = React.useState<IStatus>();
+  const [shadowState, setShadowState] = React.useState<IReceivedShadow | null>(null);
+  const [nextStatusDue, setNextStatusDue] = React.useState<DateTime>();
+
+  const offline = !!nextStatusDue && nextStatusDue <= now;
+
+  React.useEffect(() => {
+    console.log({ pageVisible, client, offline });
+    if (!pageVisible || !client || !offline) {
+      return;
+    }
+    client.requestStatus();
+  }, [client, offline, pageVisible]);
 
   React.useEffect(() => {
     if (!client) {
       return;
     }
     client.status$.subscribe(status => {
-      disconnectedTimeout.stop();
+      statusTimer.stop();
+      const isActive = !!status.active.length || !!status.pending.length;
+      const requestNextStatusIn = (isActive ? activeRequestStatusPeriod : inactiveRequestStatusPeriod)
+        .plus({ milliseconds: Math.round((Math.random() - 0.5) * randomRequestStatusWindow.as('milliseconds')) });
+      setNextStatusDue(DateTime.local().plus(requestNextStatusIn).plus(offlineTimeoutDuration));
       setStatus(status);
-      requestStatusTimeout.start(client.requestStatus, (status.active.length || status.pending.length) ? 5000 : 60000);
+      statusTimer.start(
+        () => pageVisibleRef.current && client.requestStatus(),
+        requestNextStatusIn);
     });
     client.shadow$.subscribe(setShadowState);
+    setNextStatusDue(DateTime.local().plus(offlineTimeoutDuration));
     client.requestStatus();
     client.requestShadow();
-  }, [client, requestStatusTimeout, disconnectedTimeout]);
-
-  const offline = status === null || client === null;
+  }, [client, statusTimer]);
 
   const [confirmingProgram, setConfirmingProgram] = React.useState<IProgramConfiguration>();
   const [confirmingZoneIds, setConfirmingZoneIds] = React.useState<number[]>();
@@ -97,8 +91,14 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <h1 className="title is-uppercase" style={{ flex: 1 }}>{sprinklerId}</h1>
         <span
-          className={offline ? 'has-text-danger' : 'has-text-success'}
-          style={{ marginBottom: '1.5em' }}
+          className={classNames("is-clickable", offline ? 'has-text-danger' : 'has-text-success')}
+          style={{
+            marginBottom: '1.5em',
+            WebkitUserSelect: 'none', /* Safari */
+            MozUserSelect: 'none', /* Firefox */
+            msUserSelect: 'none', /* IE10+/Edge */
+            userSelect: 'none', /* Standard */
+          }}
           onClick={() => client?.requestStatus()}
         >
           {offline
@@ -110,54 +110,12 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
         </span>
       </div>
 
-      {!!(status?.active?.length || status?.pending?.length) && (
-        <div style={{ display: 'flex' }}>
-          <div style={{ flex: 1 }}>
-            <table>
-              <tbody>
-                {!!status?.active?.length && (
-                  <tr style={{ paddingBottom: '1em' }}>
-                    <th style={{ paddingRight: '1em' }}>ACTIVE</th>
-                    <td>
-                      <div className="field is-grouped is-grouped-multiline" style={{ paddingBottom: '1em' }}>
-                        {status.active?.map((i, index) => (
-                          <QueuedZoneTag
-                            key={index}
-                            queuedZone={i}
-                            config={desiredConfig}
-                          />
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {!!status?.pending?.length && (
-                  <tr style={{ paddingBottom: '1em' }}>
-                    <th style={{ paddingRight: '1em' }}>PENDING</th>
-                    <td>
-                      <div className="field is-grouped is-grouped-multiline" style={{ paddingBottom: '1em' }}>
-                        {status.pending?.map((i, index) => (
-                          <QueuedZoneTag
-                            key={index}
-                            queuedZone={i}
-                            config={desiredConfig}
-                            pending
-                          />
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div>
-            <button className="button is-danger" onClick={() => setConfirmingStop(true)}>
-              <i className="fa fa-stop" />
-            </button>
-          </div>
-        </div>
-      )}
+      <SprinklerStatus
+        configuration={desiredConfig}
+        status={status}
+        onStop={() => setConfirmingStop(true)}
+      />
+
       {desiredConfig ? (
         <div className="columns">
           <div className="column">
@@ -200,7 +158,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
         </div>
       ) : null
       }
-    </div >
+    </div>
   );
 }
 

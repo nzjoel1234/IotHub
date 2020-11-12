@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Field, Form } from 'react-final-form';
 import arrayMutators from 'final-form-arrays'
 import { FieldArray } from 'react-final-form-arrays';
+import classNames from 'classnames';
 
 import { propertiesOf } from 'util/propertiesOf';
 
@@ -131,7 +132,11 @@ export function SprinklerConfigurationForm({
             </fieldset>
           </details>
           {submitError && <p className="has-text-right has-text-danger">{submitError}</p>}
-          <input className="button" type="submit" value="Save" disabled={submitting} />
+          <input
+            type="submit"
+            className={classNames("button is-success", { "is-loading": submitting })}
+            value="Save"
+          />
         </form>
       )}
     </Form>
