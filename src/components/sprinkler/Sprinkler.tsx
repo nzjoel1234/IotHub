@@ -28,20 +28,48 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
   const now = useNow();
   const client = useSprinklerClient(sprinklerId);
   const statusTimer = useTimeout();
+  const reconnectTimer = useTimeout();
 
   const [status, setStatus] = React.useState<IStatus>();
   const [shadowState, setShadowState] = React.useState<IReceivedShadow | null>(null);
   const [nextStatusDue, setNextStatusDue] = React.useState<DateTime>();
 
   const offline = !!nextStatusDue && nextStatusDue <= now;
+  const online = !offline && !!status;
+  const offlineRef = React.useRef(offline);
+  offlineRef.current = offline;
+  const reconnectBackoffCountRef = React.useRef(0);
 
-  React.useEffect(() => {
-    console.log({ pageVisible, client, offline });
-    if (!pageVisible || !client || !offline) {
+  const onReconnectTimerExpired = React.useCallback(() => {
+    console.log('onReconnectTimerExpired', offlineRef.current, reconnectBackoffCountRef.current);
+    if (!offlineRef.current) {
       return;
     }
-    client.requestStatus();
-  }, [client, offline, pageVisible]);
+    client?.requestStatus();
+    reconnectBackoffCountRef.current++;
+    reconnectTimer.start(
+      onReconnectTimerExpired,
+      Duration.fromMillis(reconnectBackoffCountRef.current * 1000));
+  }, [client, reconnectTimer]);
+
+  const reconnect = !!(pageVisible && client && offline);
+  const [reconnecting, setReconnecting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (online) {
+      client?.requestShadow();
+    }
+  }, [client, online]);
+
+  React.useEffect(() => {
+    setReconnecting(reconnect);
+    if (!reconnect) {
+      reconnectTimer.stop();
+      return;
+    }
+    reconnectBackoffCountRef.current = 0;
+    onReconnectTimerExpired();
+  }, [reconnect, reconnectTimer, onReconnectTimerExpired]);
 
   React.useEffect(() => {
     if (!client) {
@@ -61,7 +89,6 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
     client.shadow$.subscribe(setShadowState);
     setNextStatusDue(DateTime.local().plus(offlineTimeoutDuration));
     client.requestStatus();
-    client.requestShadow();
   }, [client, statusTimer]);
 
   const [confirmingProgram, setConfirmingProgram] = React.useState<IProgramConfiguration>();
@@ -91,7 +118,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <h1 className="title is-uppercase" style={{ flex: 1 }}>{sprinklerId}</h1>
         <span
-          className={classNames("is-clickable", offline ? 'has-text-danger' : 'has-text-success')}
+          className={classNames("is-clickable", (offline && !reconnecting) ? 'has-text-danger' : 'has-text-success')}
           style={{
             marginBottom: '1.5em',
             WebkitUserSelect: 'none', /* Safari */
@@ -101,9 +128,9 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
           }}
           onClick={() => client?.requestStatus()}
         >
-          {offline
+          {(offline && !reconnecting)
             ? <b><i className="fa fa-times" />&nbsp;OFFLINE</b>
-            : !!status
+            : online
               ? <b><i className="fa fa-check" />&nbsp;ONLINE</b>
               : <b><i className="fa fa-circle-notch fa-spin" />&nbsp;CONNECTING</b>
           }
@@ -116,7 +143,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
         onStop={() => setConfirmingStop(true)}
       />
 
-      {desiredConfig ? (
+      {!desiredConfig ? null : (
         <div className="columns">
           <div className="column">
             <h2 className="subtitle">PROGRAMS</h2>
@@ -156,8 +183,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
             ))}
           </div>
         </div>
-      ) : null
-      }
+      )}
     </div>
   );
 }

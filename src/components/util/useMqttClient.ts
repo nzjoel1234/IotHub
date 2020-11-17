@@ -1,6 +1,7 @@
 import * as React from 'react';
 import MQTT from 'async-mqtt';
 import { Signer } from 'aws-amplify';
+import { ICredentials } from '@aws-amplify/core';
 import { Observable, Subject } from 'rxjs';
 
 import { useCredentials } from 'components/auth';
@@ -26,13 +27,14 @@ export type MqttClient = {
 
 export function useMqttClient() {
   const credentials = useCredentials();
+  const credentialsRef = React.useRef(credentials);
+  credentialsRef.current = credentials;
+  const [client, setClient] = React.useState<MQTT.AsyncClient | null>(null);
+  const [messages$] = React.useState(new Subject<IMessage>());
 
-  const signedUriRef = React.useRef<string>();
-  const [signedUri, setSignedUri] = React.useState<string | null>(null);
-  React.useEffect(() => {
+  const getSignedUri = React.useCallback((credentials: ICredentials | null | undefined) => {
     if (!credentials) {
-      setSignedUri(null);
-      return;
+      return null;
     }
 
     const {
@@ -41,21 +43,19 @@ export function useMqttClient() {
       sessionToken: session_token,
     } = credentials;
 
-    const uri = 'wss://a3ifeswmcxw4rt-ats.iot.us-east-1.amazonaws.com/mqtt';
-    const serviceInfo = {
-      service: 'iotdevicegateway',
-      region: 'us-east-1',
-    };
-
-    setSignedUri(signedUriRef.current = Signer.signUrl(
-      uri,
-      { access_key, secret_key, session_token },
-      serviceInfo
-    ));
-  }, [credentials]);
-
-  const [client, setClient] = React.useState<MQTT.AsyncClient | null>(null);
-  const [messages$] = React.useState(new Subject<IMessage>());
+    return Signer.signUrl(
+      'wss://a3ifeswmcxw4rt-ats.iot.us-east-1.amazonaws.com/mqtt',
+      {
+        access_key,
+        secret_key,
+        session_token
+      },
+      {
+        service: 'iotdevicegateway',
+        region: 'us-east-1',
+      }
+    );
+  }, []);
 
   React.useEffect(() => {
     const sub = messages$.subscribe(({ topic, message }) =>
@@ -74,25 +74,48 @@ export function useMqttClient() {
   }, [messages$]);
 
   React.useEffect(() => {
-    if (!!client || !signedUri) {
+    if (!!client) {
+      return;
+    }
+    const signedUri = getSignedUri(credentials);
+    if (!signedUri) {
       return;
     }
     MQTT.connectAsync(signedUri, {
       clientId: Math.random().toString(36).substring(7),
-      transformWsUrl: url => signedUriRef.current || url,
+      transformWsUrl: url => getSignedUri(credentialsRef.current) || url,
     })
       .then(onConnected)
       .catch(e => console.error('mqtt failed to connect', e));
-  }, [client, signedUri, onConnected]);
+  }, [client, credentials, getSignedUri, onConnected]);
 
-  return React.useMemo<MqttClient | null>(() => !client ? null : ({
-    publish: (topic, message) => client
-      .publish(topic, message)
-      .then(() => console.log('mqtt.tx', topic, message)),
-    subscribe: topic => client.subscribe(topic),
-    unsubscribe: topic => client.unsubscribe(topic),
-    messages$,
-  }), [client, messages$]);
+  const logState = React.useCallback(
+    (client: MQTT.AsyncClient | null) => console.log('mqttClientState',
+      client?.disconnected ? 'disconnected'
+        : client?.disconnecting ? 'disconnecting'
+          : client?.reconnecting ? 'reconnecting'
+            : client?.connected ? 'connected'
+              : 'unkown'),
+    []);
+
+  return React.useMemo<MqttClient | null>(() => {
+    client?.on('error', error => {
+      console.error('mqtt', error);
+      logState(client);
+    });
+    logState(client);
+    return !client ? null : ({
+      publish: (topic, message) => {
+        logState(client);
+        return (client.disconnected ? client.reconnect() : client)
+          .publish(topic, message)
+          .then(() => console.log('mqtt.tx', topic, message));
+      },
+      subscribe: topic => client.subscribe(topic),
+      unsubscribe: topic => client.unsubscribe(topic),
+      messages$,
+    });
+  }, [client, logState, messages$]);
 }
 
 export default useMqttClient;
