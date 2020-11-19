@@ -40,18 +40,20 @@ export interface IZoneConfiguration {
   group?: string;
 }
 
+export interface IProgramSchedule {
+  start_time: number;
+  odd_days?: boolean;
+  even_days?: boolean;
+  week_days?: WeekDays[];
+}
+
 export interface IProgramConfiguration {
   name: string;
   zones: Array<{
     id: number;
     duration: number;
   }>;
-  schedules: Array<{
-    start_time: number;
-    odd_days?: boolean;
-    even_days?: boolean;
-    week_days?: WeekDays[];
-  }>;
+  schedules: IProgramSchedule[];
 }
 
 export interface ISprinklerConfiguration {

@@ -4,7 +4,7 @@ import * as $ from 'rxjs/operators';
 import { DateTime, Duration } from 'luxon';
 import { map, keyBy, mapValues, pickBy, keys } from 'lodash';
 
-import { useMqttClient } from 'components/util';
+import { MqttContext } from 'components/util';
 
 import { IProgramConfiguration, IReceivedShadow, IReceivedStatus, ISprinklerConfiguration, IStatus } from './models';
 
@@ -20,9 +20,9 @@ export interface ISprinklerClient {
 }
 
 export function useSprinklerClient(deviceId: string) {
-  const client = useMqttClient();
   const [sprinklerClient, setSprinklerClient] = React.useState<ISprinklerClient | null>(null);
 
+  const client = React.useContext(MqttContext);
   React.useEffect(() => {
     if (!client) {
       setSprinklerClient(null);

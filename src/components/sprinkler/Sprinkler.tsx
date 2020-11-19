@@ -13,6 +13,11 @@ import {
 import ConfirmStartModal from './ConfirmStartModal';
 import SprinklerStatus from './SprinklerStatus';
 import useSprinklerClient from './useSprinklerClient';
+import userSprinklerClientMock from './useSprinklerClient.mock'
+
+const useClient = process?.env?.NODE_ENV === 'development'
+  ? userSprinklerClientMock
+  : useSprinklerClient
 
 const offlineTimeoutDuration = Duration.fromObject({ seconds: 3 });
 const activeRequestStatusPeriod = Duration.fromObject({ seconds: 10 });
@@ -26,7 +31,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
   pageVisibleRef.current = pageVisible;
 
   const now = useNow();
-  const client = useSprinklerClient(sprinklerId);
+  const client = useClient(sprinklerId);
   const statusTimer = useTimeout();
   const reconnectTimer = useTimeout();
 
@@ -38,18 +43,18 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
   const online = !offline && !!status;
   const offlineRef = React.useRef(offline);
   offlineRef.current = offline;
-  const reconnectBackoffCountRef = React.useRef(0);
+  const reconnectBackoffMillisRef = React.useRef(0);
 
   const onReconnectTimerExpired = React.useCallback(() => {
-    console.log('onReconnectTimerExpired', offlineRef.current, reconnectBackoffCountRef.current);
     if (!offlineRef.current) {
       return;
     }
+    console.log('onReconnectTimerExpired', reconnectBackoffMillisRef.current);
     client?.requestStatus();
-    reconnectBackoffCountRef.current++;
+    reconnectBackoffMillisRef.current = Math.min(60000, Math.max(1000, reconnectBackoffMillisRef.current * 1.5));
     reconnectTimer.start(
       onReconnectTimerExpired,
-      Duration.fromMillis(reconnectBackoffCountRef.current * 1000));
+      Duration.fromMillis(reconnectBackoffMillisRef.current));
   }, [client, reconnectTimer]);
 
   const reconnect = !!(pageVisible && client && offline);
@@ -67,7 +72,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
       reconnectTimer.stop();
       return;
     }
-    reconnectBackoffCountRef.current = 0;
+    reconnectBackoffMillisRef.current = 0;
     onReconnectTimerExpired();
   }, [reconnect, reconnectTimer, onReconnectTimerExpired]);
 
@@ -102,6 +107,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
   }, []);
 
   const desiredConfig = shadowState?.state?.desired;
+  //const [editingProgramId, setEditingProgramId] = React.useState<number | null>();
 
   return (
     <div>
@@ -115,6 +121,14 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
           onDone={onConfirmationDone}
         />
       )}
+      {/* {!!desiredConfig && editingProgramId !== undefined && (
+        <ProgramConfigurationForm
+          config={desiredConfig}
+          programId={0}
+          updateConfig={x => console.log('updateConfig', x)}
+        />
+      )} */}
+
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <h1 className="title is-uppercase" style={{ flex: 1 }}>{sprinklerId}</h1>
         <span
@@ -129,10 +143,10 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
           onClick={() => client?.requestStatus()}
         >
           {(offline && !reconnecting)
-            ? <b><i className="fa fa-times" />&nbsp;OFFLINE</b>
+            ? <b><i className="fas fa-times" />&nbsp;OFFLINE</b>
             : online
-              ? <b><i className="fa fa-check" />&nbsp;ONLINE</b>
-              : <b><i className="fa fa-circle-notch fa-spin" />&nbsp;CONNECTING</b>
+              ? <b><i className="fas fa-check" />&nbsp;ONLINE</b>
+              : <b><i className="fas fa-circle-notch fa-spin" />&nbsp;CONNECTING</b>
           }
         </span>
       </div>
@@ -143,46 +157,38 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
         onStop={() => setConfirmingStop(true)}
       />
 
-      {!desiredConfig ? null : (
-        <div className="columns">
-          <div className="column">
-            <h2 className="subtitle">PROGRAMS</h2>
-            {desiredConfig.programs?.map((program, index) => (
-              <div key={index} className="box" style={{ display: 'flex', alignItems: 'center' }}>
-                <p style={{ flex: 1 }}>{program.name}</p>
-                <button
-                  className="button is-success"
-                  onClick={() => setConfirmingProgram(program)}
-                >
-                  <i className="fa fa-play" />
-                </button>
-              </div>
-            ))}
-            {!!desiredConfig.zones.length && (
-              <div className="box" style={{ display: 'flex', alignItems: 'center' }}>
-                <p style={{ flex: 1 }}><em>Custom Program</em></p>
-                <button
-                  className="button is-success"
-                  onClick={() => setConfirmingZoneIds(desiredConfig.zones.map((_, index) => index))}
-                >
-                  <i className="fa fa-play" />
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="column">
-            <h2 className="subtitle">ZONES</h2>
-            {desiredConfig.zones?.map(({ name, group }, index) => (
-              <div key={index} className="box" style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ flex: 1 }}>{name}</span>
-                <small className="has-text-grey mx-2">{group}</small>
-                <button className="button is-success" onClick={() => setConfirmingZoneIds([index])}>
-                  <i className="fa fa-play" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+      {!!desiredConfig && (
+        <>
+          <h2 className="subtitle">PROGRAMS</h2>
+          {desiredConfig.programs?.map((program, index) => (
+            <div key={index} className="box" style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ flex: 1 }}>
+                {program.name}
+                {/* &nbsp;
+                <span className="icon" onClick={() => setEditingProgramId(index)}>
+                  <i className="fas fa-edit" />
+                </span> */}
+              </span>
+              <button
+                className="button is-success"
+                onClick={() => setConfirmingProgram(program)}
+              >
+                <i className="fas fa-play" />
+              </button>
+            </div>
+          ))}
+          {!!desiredConfig.zones.length && (
+            <div className="box" style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ flex: 1 }}><em>Custom Program</em></span>
+              <button
+                className="button is-success"
+                onClick={() => setConfirmingZoneIds(desiredConfig.zones.map((_, index) => index))}
+              >
+                <i className="fas fa-play" />
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

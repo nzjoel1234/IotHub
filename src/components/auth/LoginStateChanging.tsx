@@ -1,17 +1,18 @@
 import * as React from 'react';
 import { Redirect } from 'react-router-dom';
 import { Auth } from 'aws-amplify';
-
-import useCredentials from 'components/auth/useCredentials';
-import { useNow } from 'components/util';
 import { Duration } from 'luxon';
+
+import { useNow } from 'components/util';
+
+import CredentialsContext from './CredentialsContext';
 
 interface IProps {
   waitingFor: 'login' | 'logout';
 }
 
 export const LoginStateChanging = ({ waitingFor }: IProps) => {
-  const credentials = useCredentials();
+  const credentials = React.useContext(CredentialsContext);
   const now = useNow();
   const [expiryTime] = React.useState(now.plus(Duration.fromObject({ seconds: 5 })));
 
@@ -36,7 +37,7 @@ export const LoginStateChanging = ({ waitingFor }: IProps) => {
         fontSize: 100,
       }}>
         <span className="icon">
-          <i className="fa fa-circle-notch fa-spin" />
+          <i className="fas fa-circle-notch fa-spin" />
         </span>
       </div>
     );

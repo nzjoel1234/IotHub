@@ -86,7 +86,7 @@ export const SprinklerStatus = ({
       </div>
       <div>
         <button className="button is-danger" onClick={onStop}>
-          <i className="fa fa-stop" />
+          <i className="fas fa-stop" />
         </button>
       </div>
     </div>

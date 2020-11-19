@@ -69,7 +69,7 @@ export const ConfirmStartModal = ({
             {({ handleSubmit, submitting, submitError }) => (
               <form onSubmit={handleSubmit}>
                 <h1 className="title">
-                  {program ? 'Confirm' : (zoneIds || []).length > 1 ? 'Start Zones' : 'Start Zone'}
+                  {stop ? 'Confirm Stop' : program ? 'Confirm Start' : 'Start Custom Program'}
                 </h1>
                 {stop
                   ? (<p>Stop all zones?</p>)
@@ -119,13 +119,13 @@ export const ConfirmStartModal = ({
                     className={classNames("button is-success", { "is-loading": submitting })}
                     style={{ marginRight: '0.5rem' }}
                   >
-                    <i className="fa fa-check" />
+                    <i className="fas fa-check" />
                   </button>
                   <button
                     className={classNames("button is-danger", { "is-loading": submitting })}
                     onClick={onDone}
                   >
-                    <i className="fa fa-times" />
+                    <i className="fas fa-times" />
                   </button>
                 </div>
               </form>

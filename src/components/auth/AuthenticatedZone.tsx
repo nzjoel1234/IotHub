@@ -3,7 +3,7 @@ import { map } from 'lodash';
 
 import amplifyConfig from 'amplifyConfig';
 
-import useCredentials from './useCredentials';
+import CredentialsContext from './CredentialsContext';
 
 const loginUrl = `https://${amplifyConfig.Auth.oauth.domain}/login?${map({
   'client_id': amplifyConfig.Auth.userPoolWebClientId,
@@ -13,7 +13,7 @@ const loginUrl = `https://${amplifyConfig.Auth.oauth.domain}/login?${map({
 }, (v, k) => `${k}=${v}`).join('&')}`;
 
 export function AuthenticatedZone({ children }: any) {
-  const credentials = useCredentials();
+  const credentials = React.useContext(CredentialsContext);
 
   return credentials === undefined ? (
     <div style={{
@@ -28,7 +28,7 @@ export function AuthenticatedZone({ children }: any) {
       fontSize: 100,
     }}>
       <span className="icon">
-        <i className="fa fa-circle-notch fa-spin" />
+        <i className="fas fa-circle-notch fa-spin" />
       </span>
     </div>
   ) : !credentials
