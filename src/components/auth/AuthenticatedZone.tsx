@@ -3,7 +3,12 @@ import { map } from 'lodash';
 
 import amplifyConfig from 'amplifyConfig';
 
-import CredentialsContext from './CredentialsContext';
+import {
+  CredentialsContext as RealCredentialsContext,
+  MockCredentialsContext,
+} from './CredentialsContext';
+const CredentialsContext = process?.env?.REACT_APP_MOCK_CLIENT === 'true'
+? MockCredentialsContext : RealCredentialsContext
 
 const loginUrl = `https://${amplifyConfig.Auth.oauth.domain}/login?${map({
   'client_id': amplifyConfig.Auth.userPoolWebClientId,

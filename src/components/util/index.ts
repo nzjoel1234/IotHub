@@ -1,3 +1,4 @@
+export * from './Modal';
 export * from './MqttContext';
 export * from './useDeepCompareMemo';
 export * from './useNow';

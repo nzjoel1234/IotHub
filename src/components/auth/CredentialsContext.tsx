@@ -12,6 +12,10 @@ interface ICredentialState {
 
 export const CredentialsContext = React.createContext<ICredentials | null | undefined>(undefined);
 
+export const MockCredentialsContext = React.createContext<ICredentials | null | undefined>({
+  _isMock: true
+} as any);
+
 export const CredentialsProvider = ({ children }: React.PropsWithChildren<{}>) => {
   const [{ credentials, expires }, setCredentials] =
     React.useState<ICredentialState>({ expires: DateTime.local() });

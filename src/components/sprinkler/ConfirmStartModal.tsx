@@ -5,6 +5,8 @@ import { reduce } from 'lodash';
 import { FORM_ERROR } from 'final-form';
 import classNames from 'classnames';
 
+import { Modal } from 'components/util';
+
 import { IProgramConfiguration, ISprinklerConfiguration } from './models';
 import { ISprinklerClient } from './useSprinklerClient';
 
@@ -58,87 +60,77 @@ export const ConfirmStartModal = ({
     [client, stop, program, onDone]);
 
   return configuration && client && (stop || program || zoneIds?.length) ? (
-    <div className="modal is-active">
-      <div className="modal-background"/>
-      <div className="modal-content">
-        <div className="box">
-          <Form<IFormValues>
-            onSubmit={onSubmit}
-            initialValues={initialValues}
-          >
-            {({ handleSubmit, submitting, submitError }) => (
-              <form onSubmit={handleSubmit}>
-                <h1 className="title">
-                  {stop ? 'Confirm Stop' : program ? 'Confirm Start' : 'Start Custom Program'}
-                </h1>
-                {stop
-                  ? (<p>Stop all zones?</p>)
-                  : program
-                  ? (<p>Start program '{program.name}'?</p>)
-                  : (
-                    zoneIds?.map(zoneId => (
-                      <Field<number>
-                        key={zoneId}
-                        name={zoneIdToKey(zoneId)}
-                        parse={stringToNumber}
-                      >
-                        {({ input }) => (
-                          <div className="field is-horizontal">
-                            <div className="field-label is-normal">
-                              <label htmlFor={'' + zoneId} className="label">
-                                {(configuration.zones || [])[zoneId]?.name || `Zone ${zoneId}`}
-                              </label>
-                            </div>
-                            <div className="field-body">
-                              <div className="field">
-                                <p className="control has-icons-right">
-                                  <input
-                                    className="input"
-                                    key={zoneId}
-                                    id={'' + zoneId}
-                                    type="number"
-                                    disabled={submitting}
-                                    max={120}
-                                    {...input}
-                                  />
-                                  <span className="icon is-right">
-                                    mins
-                                  </span>
-                                </p>
-                              </div>
-                            </div>
+    <Modal onCloseClicked={onDone}>
+      <Form<IFormValues>
+        onSubmit={onSubmit}
+        initialValues={initialValues}
+      >
+        {({ handleSubmit, submitting, submitError }) => (
+          <form onSubmit={handleSubmit}>
+            <h1 className="title">
+              {stop ? 'Confirm Stop' : program ? 'Confirm Start' : 'Start Custom Program'}
+            </h1>
+            {stop
+              ? (<p>Stop all zones?</p>)
+              : program
+              ? (<p>Start program '{program.name}'?</p>)
+              : (
+                zoneIds?.map(zoneId => (
+                  <Field<number>
+                    key={zoneId}
+                    name={zoneIdToKey(zoneId)}
+                    parse={stringToNumber}
+                  >
+                    {({ input }) => (
+                      <div className="field is-horizontal">
+                        <div className="field-label is-normal">
+                          <label htmlFor={'' + zoneId} className="label">
+                            {(configuration.zones || [])[zoneId]?.name || `Zone ${zoneId}`}
+                          </label>
+                        </div>
+                        <div className="field-body">
+                          <div className="field">
+                            <p className="control has-icons-right">
+                              <input
+                                className="input"
+                                key={zoneId}
+                                id={'' + zoneId}
+                                type="number"
+                                disabled={submitting}
+                                max={120}
+                                {...input}
+                              />
+                              <span className="icon is-right">
+                                mins
+                              </span>
+                            </p>
                           </div>
-                        )}
-                      </Field>
-                    ))
-                )}
-                {submitError && <p className="has-text-right has-text-danger">{submitError}</p>}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-                  <button
-                    type="submit"
-                    className={classNames("button is-success", { "is-loading": submitting })}
-                    style={{ marginRight: '0.5rem' }}
-                  >
-                    <i className="fas fa-check" />
-                  </button>
-                  <button
-                    className={classNames("button is-danger", { "is-loading": submitting })}
-                    onClick={onDone}
-                  >
-                    <i className="fas fa-times" />
-                  </button>
-                </div>
-              </form>
+                        </div>
+                      </div>
+                    )}
+                  </Field>
+                ))
             )}
-          </Form>
-        </div>
-      </div>
-      <button
-        className="modal-close is-large"
-        aria-label="close"
-        onClick={onDone}
-      />
-    </div>
+            {submitError && <p className="has-text-right has-text-danger">{submitError}</p>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button
+                type="submit"
+                className={classNames("button is-success", { "is-loading": submitting })}
+                style={{ marginRight: '0.5rem' }}
+              >
+                <i className="fas fa-check" />
+              </button>
+              <button
+                className={classNames("button is-danger", { "is-loading": submitting })}
+                onClick={onDone}
+              >
+                <i className="fas fa-times" />
+              </button>
+            </div>
+          </form>
+        )}
+      </Form>
+    </Modal>
   ) : null;
 }
 

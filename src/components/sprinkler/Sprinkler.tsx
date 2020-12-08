@@ -15,7 +15,7 @@ import SprinklerStatus from './SprinklerStatus';
 import useSprinklerClient from './useSprinklerClient';
 import userSprinklerClientMock from './useSprinklerClient.mock'
 
-const useClient = process?.env?.NODE_ENV === 'development'
+const useClient = process?.env?.REACT_APP_MOCK_CLIENT === 'true'
   ? userSprinklerClientMock
   : useSprinklerClient
 
