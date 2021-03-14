@@ -10,17 +10,17 @@ export const formatStartTime = (startTime: number) => [
 export const formatWeekDay = (weekDay: WeekDays, short?: boolean) => {
   switch (weekDay) {
     case WeekDays.Mon:
-      return short ? 'Mo' : 'Monday';
+      return short ? 'Mon' : 'Monday';
     case WeekDays.Tue:
-      return short ? 'Tu' : 'Tuesday';
+      return short ? 'Tue' : 'Tuesday';
     case WeekDays.Wed:
-      return short ? 'We' : 'Wendesday';
+      return short ? 'Wed' : 'Wendesday';
     case WeekDays.Thu:
-      return short ? 'Th' : 'Thursday';
+      return short ? 'Thu' : 'Thursday';
     case WeekDays.Fri:
-      return short ? 'Fr' : 'Friday';
+      return short ? 'Fri' : 'Friday';
     case WeekDays.Sat:
-      return short ? 'Sa' : 'Saturday';
+      return short ? 'Sat' : 'Saturday';
     case WeekDays.Sun:
       return short ? 'Sun' : 'Sunday';
   }
@@ -28,10 +28,10 @@ export const formatWeekDay = (weekDay: WeekDays, short?: boolean) => {
 
 export const scheduleSummary = (schedule: IProgramSchedule) => {
   return [
-    formatStartTime(schedule.start_time),
     !schedule.even_days && !!schedule.odd_days && 'Odd Days',
     !!schedule.even_days && !schedule.odd_days && 'Even Days',
     schedule.week_days?.map(d => formatWeekDay(d, true))?.join(', '),
     !!schedule.even_days && !!schedule.odd_days && !schedule.week_days?.length && 'Daily',
+    formatStartTime(schedule.start_time),
   ].filter(i => !!i).join(' ');
 }
