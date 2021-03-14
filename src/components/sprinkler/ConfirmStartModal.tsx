@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Field, Form } from 'react-final-form';
 import { Duration } from 'luxon';
-import { mapValues } from 'lodash';
+import { reduce } from 'lodash';
 import { FORM_ERROR } from 'final-form';
 import classNames from 'classnames';
 
@@ -27,6 +27,7 @@ interface FormData {
 }
 
 const zoneIdToKey = (id: number) => 'z' + id;
+const zoneKeyToId = (key: string) => +key.replace('z', '');
 
 const minDuration = Duration.fromMillis(0);
 const maxDuration = Duration.fromObject({ hours: 2 });
@@ -53,7 +54,13 @@ export const ConfirmStartModal = ({
     (formValues: FormData) => (
       stop ? client.stopZones() :
         program ? client.queueProgram(program) :
-          client.queueZones(mapValues(formValues, v => v || Duration.fromMillis(0))))
+          client.queueZones(reduce(
+            formValues,
+            (curr, duration, key) => ({
+              ...curr,
+              [zoneKeyToId(key)]: duration || Duration.fromMillis(0),
+            }),
+            {})))
       .then(onDone)
       .then(() => undefined)
       .catch(e => {
