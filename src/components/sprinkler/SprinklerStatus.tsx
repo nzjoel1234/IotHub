@@ -1,6 +1,7 @@
 import * as React from 'react';
 import classNames from 'classnames';
 import { Duration } from 'luxon';
+import { groupBy, map } from 'lodash';
 
 import { useNow } from 'components/util';
 
@@ -70,12 +71,12 @@ export const SprinklerStatus = ({
                 <th style={{ paddingRight: '1em' }}>PENDING</th>
                 <td>
                   <div className="field is-grouped is-grouped-multiline" style={{ paddingBottom: '1em' }}>
-                    {status.pending?.map((i, index) => (
+                    {map(groupBy(status.pending, i => i.zoneId), (i, zoneId) => (
                       <QueuedZoneTag
-                        key={index}
+                        key={zoneId}
                         pending
-                        zoneName={getZoneName(i.zoneId, configuration)}
-                        remaining={i.duration}
+                        zoneName={getZoneName(+zoneId, configuration)}
+                        remaining={i.reduce((sum, next) => sum.plus(next.duration), Duration.fromMillis(0))}
                       />
                     ))}
                   </div>
