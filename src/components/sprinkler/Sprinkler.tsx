@@ -127,7 +127,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
         <ProgramConfigurationModal
           config={desiredConfig}
           programId={editingProgramId}
-          updateConfig={config => client ? client.updateConfig(config) : Promise.reject()}
+          updateConfig={config => client ? client?.updateConfig(config) : Promise.reject('Client not available')}
           onClose={() => setEditingProgramId(undefined)}
         />
       )}

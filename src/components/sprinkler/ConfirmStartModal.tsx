@@ -1,14 +1,17 @@
 import * as React from 'react';
-import { Form, Field } from 'react-final-form';
+import { Field, Form } from 'react-final-form';
 import { Duration } from 'luxon';
-import { reduce } from 'lodash';
+import { mapValues } from 'lodash';
 import { FORM_ERROR } from 'final-form';
 import classNames from 'classnames';
 
+import { getDurationValidator } from 'util/validators';
 import { Modal } from 'components/util';
+import FieldError, { FormError, getErrorFromMeta } from 'components/util/formErrors';
 
 import { IProgramConfiguration, ISprinklerConfiguration } from './models';
 import { ISprinklerClient } from './useSprinklerClient';
+import ZoneDurationField from './ZoneDurationFields';
 
 interface IProps {
   client: ISprinklerClient;
@@ -19,14 +22,15 @@ interface IProps {
   onDone: () => void;
 }
 
-interface IFormValues {
-  [zoneKey: string]: number | null;
+interface FormData {
+  [zoneKey: string]: Duration | null;
 }
 
 const zoneIdToKey = (id: number) => 'z' + id;
-const zoneKeyToId = (key: string) => +key.replace('z', '');
 
-const stringToNumber = (v: any) => +v;
+const minDuration = Duration.fromMillis(0);
+const maxDuration = Duration.fromObject({ hours: 2 });
+const validateDuration = getDurationValidator(minDuration, maxDuration);
 
 export const ConfirmStartModal = ({
   client,
@@ -38,34 +42,33 @@ export const ConfirmStartModal = ({
 }: IProps) => {
 
   const initialValues = React.useMemo(
-    () => (zoneIds || []).reduce<IFormValues>((curr, next) => ({ ...curr, ['' + next]: null }), {}),
+    () => (zoneIds || []).reduce<FormData>(
+      (curr, next) => ({
+        ...curr,
+        ['' + next]: null,
+      }), {}),
     [zoneIds]);
 
   const onSubmit = React.useCallback(
-    (formValues: IFormValues) => (
+    (formValues: FormData) => (
       stop ? client.stopZones() :
         program ? client.queueProgram(program) :
-          client.queueZones(reduce(formValues,
-          (curr, minutes, zoneKey) => !minutes ? curr : ({
-            ...curr,
-            [zoneKeyToId(zoneKey)]: Duration.fromObject({ minutes }),
-          }),
-          {}))
-      )
+          client.queueZones(mapValues(formValues, v => v || Duration.fromMillis(0))))
       .then(onDone)
+      .then(() => undefined)
       .catch(e => {
         console.error(e);
         return { [FORM_ERROR]: 'Failed to start.'};
       }),
     [client, stop, program, onDone]);
-
+  
   return configuration && client && (stop || program || zoneIds?.length) ? (
     <Modal onCloseClicked={onDone}>
-      <Form<IFormValues>
+      <Form<FormData>
         onSubmit={onSubmit}
         initialValues={initialValues}
       >
-        {({ handleSubmit, submitting, submitError }) => (
+        {({ handleSubmit, submitting }) => (
           <form onSubmit={handleSubmit}>
             <h1 className="title">
               {stop ? 'Confirm Stop' : program ? 'Confirm Start' : 'Start Custom Program'}
@@ -75,43 +78,39 @@ export const ConfirmStartModal = ({
               : program
               ? (<p>Start program '{program.name}'?</p>)
               : (
-                zoneIds?.map(zoneId => (
-                  <Field<number>
-                    key={zoneId}
-                    name={zoneIdToKey(zoneId)}
-                    parse={stringToNumber}
-                  >
-                    {({ input }) => (
-                      <div className="field is-horizontal">
-                        <div className="field-label is-normal">
-                          <label htmlFor={'' + zoneId} className="label">
-                            {(configuration.zones || [])[zoneId]?.name || `Zone ${zoneId}`}
-                          </label>
-                        </div>
-                        <div className="field-body">
-                          <div className="field">
-                            <p className="control has-icons-right">
-                              <input
-                                className="input"
-                                key={zoneId}
-                                id={'' + zoneId}
-                                type="number"
-                                disabled={submitting}
-                                max={120}
-                                {...input}
-                              />
-                              <span className="icon is-right">
-                                mins
-                              </span>
-                            </p>
+                  zoneIds?.map(zoneId => (
+                    <Field
+                      key={zoneId}
+                      name={zoneIdToKey(zoneId)}
+                      validate={validateDuration}
+                    >
+                      {({ input, meta }) => (
+                        <div className="field is-horizontal">
+                          <div className="field-label is-normal">
+                            <label htmlFor={'' + zoneId} className="label">
+                              {(configuration.zones || [])[zoneId]?.name || `Zone ${zoneId}`}
+                            </label>
+                          </div>
+                          <div className="field-body">
+                            <div className="field">
+                              <div className="control">
+                                <ZoneDurationField
+                                  {...input}
+                                  min={minDuration}
+                                  max={maxDuration}
+                                  disabled={submitting}
+                                  error={!!getErrorFromMeta(meta)}
+                                />
+                              </div>
+                              <FieldError {...{meta}} />
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </Field>
+                      )}
+                    </Field>
                 ))
             )}
-            {submitError && <p className="has-text-right has-text-danger">{submitError}</p>}
+            <FormError />
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
               <button
                 type="submit"

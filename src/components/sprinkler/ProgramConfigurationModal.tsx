@@ -1,17 +1,21 @@
 import * as React from 'react';
 import { Field, Form } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
+import { FORM_ERROR } from 'final-form';
 import arrayMutators from 'final-form-arrays'
 import classNames from 'classnames';
 import { map, uniq, includes } from 'lodash';
+import { Duration } from 'luxon';
 
 import { propertiesOf } from 'util/propertiesOf';
+import { getDurationValidator, required } from 'util/validators';
 import { Modal, useDeepCompareMemo } from 'components/util';
+import UnsavedChangesGuard from 'components/util/UnsavedChangesGuard';
+import FieldError, { FormError, getErrorFromMeta, getInputClassFromMeta } from 'components/util/formErrors';
 
 import { ISprinklerConfiguration, IProgramConfiguration, WeekDays } from './models';
-import UnsavedChangesGuard from 'components/util/UnsavedChangesGuard';
-
 import { formatWeekDay } from './scheduleHelpers';
+import ZoneDurationField from './ZoneDurationFields';
 
 const inputStyle: React.CSSProperties = {
   marginBottom: 0,
@@ -31,11 +35,6 @@ const checkBoxStyle: React.CSSProperties = {
 const zoneIdToKey = (id: number) => 'z' + id;
 const zoneKeyToId = (key: string) => +key.replace('z', '');
 
-interface IZoneDuration {
-  unit: 'mins' | 'secs';
-  value: number;
-}
-
 interface IScheduleFormData {
   startTime?: string;
   oddDays: boolean;
@@ -50,16 +49,15 @@ interface IScheduleFormData {
   sunday: boolean;
 }
 
-interface IFormData {
+interface FormData {
   name: string;
   durationByZoneKey: {
-    [zoneKey: string]: IZoneDuration;
+    [zoneKey: string]: Duration;
   }
   schedules: IScheduleFormData[];
 }
 
-const formProperties = propertiesOf<IFormData>();
-const zoneProperties = propertiesOf<IZoneDuration>();
+const formProperties = propertiesOf<FormData>();
 const scheduleProperties = propertiesOf<IScheduleFormData>();
 
 interface WeekDayDefinition {
@@ -111,8 +109,6 @@ const getNewSchedule = (): IScheduleFormData => ({
   sunday: false,
 });
 
-const stringToNumber = (value: string) => +value;
-
 interface ISprinklerConfigurationProps {
   config: ISprinklerConfiguration;
   programId: number | null;
@@ -145,6 +141,10 @@ const normaliseWeekdays = (weekDays: Array<WeekDays | undefined> | undefined) =>
   return (values.length === 0 || values.length === 7) ? undefined : values;
 }
 
+const minDuration = Duration.fromMillis(0);
+const maxDuration = Duration.fromObject({ hours: 2 });
+const validateDuration = getDurationValidator(minDuration, maxDuration);
+
 export function ProgramConfigurationModal({
   programId,
   config: rawConfig,
@@ -157,7 +157,7 @@ export function ProgramConfigurationModal({
     () => programId == null ? null : config.programs[programId],
     [programId, config.programs]));
 
-  const initialValues = useDeepCompareMemo(React.useMemo<IFormData>(() => ({
+  const initialValues = useDeepCompareMemo(React.useMemo<FormData>(() => ({
     name: program?.name || '',
     schedules: (program?.schedules || []).map(s => ({
       ...s,
@@ -175,18 +175,15 @@ export function ProgramConfigurationModal({
       anyWeekDay: !s.week_days.length,
       ...weekDays.reduce((acc, d) => ({ ...acc, [d.property]: includes(s.week_days, d.weekDay) }), {}),
     })),
-    durationByZoneKey: config.zones.reduce((s, _, id) => {
-      const existing = program?.zones.find(z => z.id === id);
-      const unit = (!existing || existing.duration % 60 === 0) ? 'mins' : 'secs';
-      const value = existing && unit === 'mins' ? existing.duration / 60 : (existing?.duration || 0);
-      return {
-        ...s,
-        [zoneIdToKey(id)]: { unit, value },
-      };
-    }, {}),
+    durationByZoneKey: config.zones.reduce((s, _, id) => ({
+      ...s,
+      [zoneIdToKey(id)]: Duration.fromObject({
+        seconds: program?.zones.find(z => z.id === id)?.duration || 0,
+      }),
+    }), {}),
   }), [config, program]));
 
-  const mapToConfig = React.useCallback(({ name, durationByZoneKey, schedules }: IFormData) =>
+  const mapToConfig = React.useCallback(({ name, durationByZoneKey, schedules }: FormData) =>
     withUpdatedProgram(config, programId, {
       name: name,
       schedules: (schedules || []).map(s => ({
@@ -197,18 +194,23 @@ export function ProgramConfigurationModal({
       })),
       zones: map(durationByZoneKey, (duration, key) => ({
         id: zoneKeyToId(key),
-        duration: duration.value * (duration.unit === 'mins' ? 60 : 1),
+        duration: duration?.as('seconds') || 0,
       })).filter(i => i.duration),
     }), [config, programId]);
 
-  const onSubmit = React.useCallback((formData: IFormData) =>
+  const onSubmit = React.useCallback((formData: FormData) =>
     Promise.resolve(mapToConfig(formData))
       .then(updateConfig)
-      .then(() => onClose()),
+      .then(() => onClose())
+      .then(() => undefined)
+      .catch(e => {
+        console.error(e);
+        return { [FORM_ERROR]: 'Failed to save.' };
+      }),
     [mapToConfig, updateConfig, onClose]);
 
   return (
-    <Form<IFormData>
+    <Form<FormData>
       onSubmit={onSubmit}
       initialValues={initialValues}
       mutators={{
@@ -225,59 +227,56 @@ export function ProgramConfigurationModal({
                   {program ? 'Edit Program' : 'New Program'}
                 </h1>
                 <form onSubmit={handleSubmit}>
-                  <div className="field">
-                    <label className="label">Name</label>
-                    <div className="control">
-                      <Field
-                        name={formProperties.name}
-                        component="input"
-                        type="text"
-                        style={inputStyle}
-                        className="input"
-                        disabled={submitting}
-                        required
-                      />
-                    </div>
-                  </div>
+                  <Field
+                    name={formProperties.name}
+                    validate={required}
+                  >
+                    {({ input, meta }) => (
+                      <div className="field">
+                        <label className="label">Name</label>
+                        <div className="control">
+                          <input
+                            {...input}
+                            type="text"
+                            className={classNames("input", getInputClassFromMeta(meta))}
+                            style={inputStyle}
+                            disabled={submitting}
+                            required
+                          />
+                          <FieldError {...{ meta }} />
+                        </div>
+                      </div>
+                    )}
+                  </Field>
                   <div className="field">
                     <label className="label">Zone Durations</label>
                     <div className="control">
                       <div className="box">
                         {map(values.durationByZoneKey, (_, zoneKey) => {
                           const zoneId = zoneKeyToId(zoneKey);
-                          const fieldPrefix = `${formProperties.durationByZoneKey}.${zoneKey}`;
                           return (
-                            <div key={zoneKey} className="field">
-                              <label htmlFor={zoneKey} className="label">
-                                {config.zones[zoneId]?.name || `Zone ${zoneId}`}
-                              </label>
-                              <div className="field has-addons">
-                                <div className="control is-expanded">
-                                  <Field<number>
-                                    name={`${fieldPrefix}.${zoneProperties.value}`}
-                                    parse={stringToNumber}
-                                    component="input"
-                                    className="input"
-                                    id={zoneKey}
-                                    type="number"
-                                    disabled={submitting}
-                                    max={120}
+                            <Field
+                              key={zoneKey}
+                              name={`${formProperties.durationByZoneKey}.${zoneKey}`}
+                              validate={validateDuration}
+                            >
+                              {({ input, meta }) => (
+                                <div className="field">
+                                  <label htmlFor={zoneKey} className="label">
+                                    {config.zones[zoneId]?.name || `Zone ${zoneId}`}
+                                  </label>
+                                  <ZoneDurationField
+                                    {...input}
+                                    id={`zoneDuration[${zoneKey}]`}
+                                    min={minDuration}
+                                    max={maxDuration}
+                                    disabled={meta.submitting}
+                                    error={!!getErrorFromMeta(meta)}
                                   />
+                                  <FieldError {...{ meta }} />
                                 </div>
-                                <div className="control">
-                                  <span className="select">
-                                    <Field<number>
-                                      name={`${fieldPrefix}.${zoneProperties.unit}`}
-                                      component="select"
-                                      disabled={submitting}
-                                    >
-                                      <option value="mins">Mins</option>
-                                      <option value="secs">Secs</option>
-                                    </Field>
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
+                              )}
+                            </Field>
                           );
                         })}
                       </div>
@@ -307,20 +306,27 @@ export function ProgramConfigurationModal({
                                       Remove <i className="fas fa-times" />
                                     </a>
                                   </div>
-                                  <div className="field">
-                                    <label className="label">Time</label>
-                                    <div className="control">
-                                      <Field
-                                        name={`${fieldPrefix}.${scheduleProperties.startTime}`}
-                                        component="input"
-                                        type="time"
-                                        style={inputStyle}
-                                        className="input"
-                                        disabled={submitting}
-                                        required
-                                      />
-                                    </div>
-                                  </div>
+                                  <Field
+                                    name={`${fieldPrefix}.${scheduleProperties.startTime}`}
+                                    validate={required}
+                                  >
+                                    {({ input, meta }) => (
+                                      <div className="field">
+                                        <label className="label">Time</label>
+                                        <div className="control">
+                                          <input
+                                            {...input}
+                                            type="time"
+                                            style={inputStyle}
+                                            className={classNames("input", getInputClassFromMeta(meta))}
+                                            disabled={submitting}
+                                            required
+                                          />
+                                        </div>
+                                        <FieldError {...{ meta }} />
+                                      </div>
+                                    )}
+                                  </Field>
                                   <div className="field">
                                     <div className="control">
                                       <label className="checkbox" style={checkBoxLabelStyle}>
@@ -393,8 +399,8 @@ export function ProgramConfigurationModal({
                       </FieldArray>
                     </div>
                   </div>
-                  {submitError && <p className="has-text-right has-text-danger">{submitError}</p>}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <FormError />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
                     <button
                       type="button"
                       className={classNames("button is-danger", { "is-loading": submitting })}
