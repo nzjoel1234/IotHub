@@ -175,9 +175,8 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
               {!!program.schedules?.length && (
                 <span
                   style={{
-                    textAlign: 'center',
+                    textAlign: 'right',
                     display: 'flex',
-                    justifyContent: 'center',
                     alignItems: 'center',
                     marginRight: 20,
                   }}
