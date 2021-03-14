@@ -8,8 +8,8 @@ export const Modal = ({
   onCloseClicked,
   children,
 }: React.PropsWithChildren<IProps>) => (
-  <div className="modal is-active">
-      <div className="modal-background" onClick={onCloseClicked}/>
+    <div className="modal is-active">
+      <div className="modal-background" onClick={onCloseClicked} />
       <div className="modal-content">
         <div className="box">
           {children}
@@ -21,6 +21,6 @@ export const Modal = ({
         onClick={onCloseClicked}
       />
     </div>
-);
+  );
 
 export default Modal;

@@ -20,15 +20,7 @@ export const CredentialsProvider = ({ children }: React.PropsWithChildren<{}>) =
   const [{ credentials, expires }, setCredentials] =
     React.useState<ICredentialState>({ expires: DateTime.local() });
 
-  React.useEffect(() => {
-    console.log('credentials', {
-      credentials,
-      expires: expires.toJSDate(),
-    });
-  }, [credentials, expires]);
-
   const updateAuthState = React.useCallback(async () => {
-    console.log('updateAuthState');
     const retryExpiry = DateTime.local().plus({ seconds: 20 });
     try {
       const session = await Auth.currentSession();

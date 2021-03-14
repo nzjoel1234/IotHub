@@ -1,9 +1,10 @@
 import * as React from 'react';
 import classNames from 'classnames';
-
-import { ISprinklerConfiguration, IStatus } from 'components/sprinkler/models';
 import { Duration } from 'luxon';
+
 import { useNow } from 'components/util';
+
+import { ISprinklerConfiguration, IStatus } from './models';
 
 const getZoneName = (zoneId: number, config: ISprinklerConfiguration | undefined) =>
   config?.zones[zoneId]?.name || `Zone ${zoneId}`
@@ -19,17 +20,17 @@ const QueuedZoneTag = ({
   remaining,
   pending,
 }: IQueuedZoneTagProps) => (
-    <div className="control">
-      <div className="tags has-addons">
-        <span className={classNames("tag", pending ? "is-info" : "is-success")}>
-          {zoneName}
-        </span>
-        <span className="tag">
-          {`${Math.round(remaining.as('minutes'))} mins`}
-        </span>
-      </div>
+  <div className="control">
+    <div className="tags has-addons">
+      <span className={classNames("tag", pending ? "is-info" : "is-success")}>
+        {zoneName}
+      </span>
+      <span className="tag">
+        {`${Math.round(remaining.as('minutes'))} mins`}
+      </span>
     </div>
-  );
+  </div>
+);
 
 interface IProps {
   status: IStatus | undefined;

@@ -12,11 +12,13 @@ import {
 } from './models';
 import ConfirmStartModal from './ConfirmStartModal';
 import SprinklerStatus from './SprinklerStatus';
+import ProgramConfigurationModal from './ProgramConfigurationModal';
 import useSprinklerClient from './useSprinklerClient';
-import userSprinklerClientMock from './useSprinklerClient.mock'
+import useSprinklerClientMock from './useSprinklerClient.mock'
+import { scheduleSummary } from './scheduleHelpers';
 
 const useClient = process?.env?.REACT_APP_MOCK_CLIENT === 'true'
-  ? userSprinklerClientMock
+  ? useSprinklerClientMock
   : useSprinklerClient
 
 const offlineTimeoutDuration = Duration.fromObject({ seconds: 3 });
@@ -107,7 +109,7 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
   }, []);
 
   const desiredConfig = shadowState?.state?.desired;
-  //const [editingProgramId, setEditingProgramId] = React.useState<number | null>();
+  const [editingProgramId, setEditingProgramId] = React.useState<number>();
 
   return (
     <div>
@@ -121,14 +123,14 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
           onDone={onConfirmationDone}
         />
       )}
-      {/* {!!desiredConfig && editingProgramId !== undefined && (
-        <ProgramConfigurationForm
+      {!!desiredConfig && editingProgramId != null && (
+        <ProgramConfigurationModal
           config={desiredConfig}
-          programId={0}
-          updateConfig={x => console.log('updateConfig', x)}
+          programId={editingProgramId}
+          updateConfig={config => client ? client.updateConfig(config) : Promise.reject()}
+          onClose={() => setEditingProgramId(undefined)}
         />
-      )} */}
-
+      )}
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <h1 className="title is-uppercase" style={{ flex: 1 }}>{sprinklerId}</h1>
         <span
@@ -164,11 +166,30 @@ export function Sprinkler({ sprinklerId }: ISprinklerProps) {
             <div key={index} className="box" style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ flex: 1 }}>
                 {program.name}
-                {/* &nbsp;
-                <span className="icon" onClick={() => setEditingProgramId(index)}>
-                  <i className="fas fa-edit" />
-                </span> */}
+                <small style={{ marginLeft: 10 }}>
+                  <a role="button" onClick={() => setEditingProgramId(index)}>
+                    <i className="fas fa-edit" /> Edit
+                  </a>
+                </small>
               </span>
+              {!!program.schedules?.length && (
+                <span
+                  style={{
+                    textAlign: 'center',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginRight: 20,
+                  }}
+                >
+                  <small className="is-hidden-mobile">
+                    {program.schedules.map((schedule, index) => (
+                      <div key={index}><em>{scheduleSummary(schedule)}</em></div>
+                    ))}
+                  </small>
+                  <i className="fas fa-clock" style={{ marginLeft: 10 }} />
+                </span>
+              )}
               <button
                 className="button is-success"
                 onClick={() => setConfirmingProgram(program)}

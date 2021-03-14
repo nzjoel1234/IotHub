@@ -25,7 +25,7 @@ export interface ISprinklerProps {
   sprinklerId: string;
 }
 
-enum WeekDays {
+export enum WeekDays {
   Mon = 0,
   Tue = 1,
   Wed = 2,
